@@ -1,0 +1,21 @@
+# RAG ChromaDB Demo - Requirements
+# Python 3.10+
+
+# Векторная база данных
+chromadb>=0.4.22
+
+# OpenAI SDK для создания эмбеддингов
+openai>=1.10.0
+
+# Парсинг HTML
+beautifulsoup4>=4.12.0
+
+# HTML парсер для BeautifulSoup
+lxml>=5.1.0
+
+# Работа с переменными окружения (опционально)
+python-dotenv>=1.0.0
+
+# Дополнительные зависимости для работы с текстом
+# typing-extensions>=4.9.0  # Для поддержки новых типов в старых версиях Python
+
