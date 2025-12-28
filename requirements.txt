@@ -1,8 +1,8 @@
-# RAG ChromaDB Demo - Requirements
+# RAG FAISS Demo - Requirements
 # Python 3.10+
 
-# Векторная база данных
-chromadb>=0.4.22
+# Векторная база данных FAISS
+faiss-cpu>=1.7.4
 
 # OpenAI SDK для создания эмбеддингов
 openai>=1.10.0
@@ -13,9 +13,8 @@ beautifulsoup4>=4.12.0
 # HTML парсер для BeautifulSoup
 lxml>=5.1.0
 
-# Работа с переменными окружения (опционально)
+# Работа с переменными окружения
 python-dotenv>=1.0.0
 
-# Дополнительные зависимости для работы с текстом
-# typing-extensions>=4.9.0  # Для поддержки новых типов в старых версиях Python
-
+# NumPy для работы с векторами
+numpy>=1.24.0

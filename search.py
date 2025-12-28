@@ -1,14 +1,11 @@
 """
-Скрипт для поиска по документам в ChromaDB.
-
-Этот скрипт позволяет выполнять семантический поиск по документам,
-которые были загружены с помощью ingest.py.
+Скрипт для поиска по документам в FAISS.
 
 Использование:
     python search.py "Ваш поисковый запрос"
     
     # С дополнительными параметрами:
-    python search.py "запрос" --n-results 5 --use-openai
+    python search.py "запрос" --n-results 5
     
     # Интерактивный режим:
     python search.py --interactive
@@ -17,31 +14,22 @@
 import sys
 import argparse
 from typing import Optional
-import os
 
-from chroma.chroma_client import ChromaDBClient
+from faiss_store.faiss_client import FAISSClient
 
 
 def display_results(results: dict, query: str):
-    """
-    Отображает результаты поиска в удобном формате.
-    
-    Args:
-        results: Результаты поиска от ChromaDB
-        query: Исходный поисковый запрос
-    """
+    """Отображает результаты поиска в удобном формате."""
     print("\n" + "=" * 80)
     print(f"РЕЗУЛЬТАТЫ ПОИСКА")
     print("=" * 80)
     print(f"Запрос: {query}")
     print("=" * 80)
     
-    # Проверяем, есть ли результаты
     if not results['documents'] or not results['documents'][0]:
         print("\n❌ Ничего не найдено")
         return
     
-    # Выводим каждый результат
     for i, (doc, metadata, distance) in enumerate(zip(
         results['documents'][0],
         results['metadatas'][0],
@@ -50,17 +38,13 @@ def display_results(results: dict, query: str):
         print(f"\n📄 Результат {i + 1}")
         print("-" * 80)
         
-        # Информация о документе
         print(f"Источник: {metadata.get('source', 'N/A')}")
         print(f"Тип: {metadata.get('type', 'N/A').upper()}")
         print(f"Чанк: {metadata.get('chunk_id', 'N/A')} из {metadata.get('total_chunks', 'N/A')}")
-        print(f"Релевантность: {1 - distance:.4f}")  # Преобразуем distance в оценку релевантности
         print(f"Distance: {distance:.4f}")
         
-        # Текст результата
         print(f"\n📝 Текст:")
         print("-" * 80)
-        # Обрезаем длинный текст для читаемости
         display_text = doc if len(doc) <= 500 else doc[:500] + "..."
         print(display_text)
         print("-" * 80)
@@ -71,70 +55,45 @@ def display_results(results: dict, query: str):
 def search_documents(
     query: str,
     n_results: int = 5,
-    use_openai: bool = False,
     openai_api_key: Optional[str] = None,
-    collection_name: str = "documents",
+    index_name: str = "documents",
     filter_type: Optional[str] = None
 ):
-    """
-    Выполняет поиск по документам.
-    
-    Args:
-        query: Поисковый запрос
-        n_results: Количество результатов
-        use_openai: Использовать ли OpenAI для эмбеддингов
-        openai_api_key: API ключ OpenAI
-        collection_name: Имя коллекции
-        filter_type: Фильтр по типу документа (txt, html или None)
-    """
-    # Создаем клиента ChromaDB
-    client = ChromaDBClient(
-        persist_directory="./chroma_db",
-        collection_name=collection_name
+    """Выполняет поиск по документам."""
+    client = FAISSClient(
+        persist_directory="./faiss_db",
+        index_name=index_name
     )
     
-    # Получаем коллекцию
-    try:
-        client.get_or_create_collection()
-    except Exception as e:
-        print(f"❌ Ошибка при подключении к ChromaDB: {str(e)}")
+    # Загружаем индекс
+    if not client.load_index():
+        print("❌ Индекс не найден!")
         print("\n💡 Подсказка: Убедитесь, что вы запустили ingest.py перед поиском!")
         sys.exit(1)
     
-    # Проверяем, есть ли документы в коллекции
-    stats = client.get_collection_stats()
+    stats = client.get_index_stats()
     if stats.get('document_count', 0) == 0:
-        print("❌ В коллекции нет документов!")
+        print("❌ В индексе нет документов!")
         print("\n💡 Подсказка: Сначала загрузите документы с помощью ingest.py")
         sys.exit(1)
     
-    print(f"\n📊 В коллекции '{collection_name}': {stats['document_count']} документов")
+    print(f"\n📊 В индексе '{index_name}': {stats['document_count']} документов")
     
-    # Подготавливаем фильтр
     where = None
     if filter_type:
         where = {"type": filter_type}
         print(f"🔍 Фильтр: только документы типа '{filter_type}'")
     
-    # Выполняем поиск
     try:
         print(f"\n🔍 Выполняется поиск...")
         
-        if use_openai:
-            results = client.search_with_openai_embedding(
-                query=query,
-                n_results=n_results,
-                where=where,
-                openai_api_key=openai_api_key
-            )
-        else:
-            results = client.search(
-                query=query,
-                n_results=n_results,
-                where=where
-            )
+        results = client.search(
+            query=query,
+            n_results=n_results,
+            where=where,
+            openai_api_key=openai_api_key
+        )
         
-        # Отображаем результаты
         display_results(results, query)
         
     except Exception as e:
@@ -143,14 +102,10 @@ def search_documents(
 
 
 def interactive_mode(
-    use_openai: bool = False,
     openai_api_key: Optional[str] = None,
-    collection_name: str = "documents"
+    index_name: str = "documents"
 ):
-    """
-    Интерактивный режим поиска.
-    Позволяет выполнять несколько поисковых запросов подряд.
-    """
+    """Интерактивный режим поиска."""
     print("\n" + "=" * 80)
     print("ИНТЕРАКТИВНЫЙ РЕЖИМ ПОИСКА")
     print("=" * 80)
@@ -158,29 +113,25 @@ def interactive_mode(
     print("Введите 'help' для справки")
     print("=" * 80)
     
-    # Создаем клиента один раз
-    client = ChromaDBClient(
-        persist_directory="./chroma_db",
-        collection_name=collection_name
+    client = FAISSClient(
+        persist_directory="./faiss_db",
+        index_name=index_name
     )
     
-    try:
-        client.get_or_create_collection()
-        stats = client.get_collection_stats()
-        print(f"\n📊 Документов в коллекции: {stats['document_count']}")
-    except Exception as e:
-        print(f"❌ Ошибка: {str(e)}")
+    if not client.load_index():
+        print("❌ Индекс не найден! Сначала запустите ingest.py")
         return
+    
+    stats = client.get_index_stats()
+    print(f"\n📊 Документов в индексе: {stats['document_count']}")
     
     while True:
         try:
-            # Получаем запрос от пользователя
             query = input("\n🔍 Введите запрос: ").strip()
             
             if not query:
                 continue
             
-            # Обработка специальных команд
             if query.lower() in ['exit', 'quit', 'q']:
                 print("\n👋 До свидания!")
                 break
@@ -192,14 +143,12 @@ def interactive_mode(
                 print("  - 'exit' или 'quit' - выход из программы")
                 continue
             
-            # Выполняем поиск
-            search_documents(
+            results = client.search(
                 query=query,
-                n_results=3,  # Меньше результатов в интерактивном режиме
-                use_openai=use_openai,
-                openai_api_key=openai_api_key,
-                collection_name=collection_name
+                n_results=3,
+                openai_api_key=openai_api_key
             )
+            display_results(results, query)
             
         except KeyboardInterrupt:
             print("\n\n👋 Прервано пользователем. До свидания!")
@@ -210,11 +159,9 @@ def interactive_mode(
 
 
 def main():
-    """
-    Основная функция скрипта.
-    """
+    """Основная функция скрипта."""
     parser = argparse.ArgumentParser(
-        description="Поиск по документам в ChromaDB",
+        description="Поиск по документам в FAISS",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Примеры использования:
@@ -242,20 +189,15 @@ def main():
         help='Количество результатов (по умолчанию: 5)'
     )
     parser.add_argument(
-        '--no-openai',
-        action='store_true',
-        help='НЕ использовать OpenAI (использовать встроенные эмбеддинги ChromaDB)'
-    )
-    parser.add_argument(
         '--openai-key',
         type=str,
         help='API ключ OpenAI'
     )
     parser.add_argument(
-        '--collection',
+        '--index',
         type=str,
         default='documents',
-        help='Имя коллекции ChromaDB (по умолчанию: documents)'
+        help='Имя индекса FAISS (по умолчанию: documents)'
     )
     parser.add_argument(
         '--filter-type',
@@ -265,35 +207,26 @@ def main():
     
     args = parser.parse_args()
     
-    # Определяем, использовать ли OpenAI (по умолчанию ДА)
-    use_openai = not args.no_openai
-    
-    # Интерактивный режим
     if args.interactive:
         interactive_mode(
-            use_openai=use_openai,
             openai_api_key=args.openai_key,
-            collection_name=args.collection
+            index_name=args.index
         )
         return
     
-    # Обычный режим - требуется запрос
     if not args.query:
         parser.print_help()
         print("\n❌ Ошибка: Укажите поисковый запрос или используйте --interactive")
         sys.exit(1)
     
-    # Выполняем поиск
     search_documents(
         query=args.query,
         n_results=args.n_results,
-        use_openai=use_openai,
         openai_api_key=args.openai_key,
-        collection_name=args.collection,
+        index_name=args.index,
         filter_type=args.filter_type
     )
 
 
 if __name__ == "__main__":
     main()
-
